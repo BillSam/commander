@@ -102,6 +102,23 @@
                         </form>
                     </div>
                 </div>
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <h3 class="card-title">Run Workflow</h3>
+                        <form id="workflow-form">
+                            <div class="mb-3">
+                                <label for="workflow-select" class="form-label">Select Workflow</label>
+                                <select id="workflow-select" class="form-select">
+                                    <!-- Options will be dynamically populated -->
+                                </select>
+                            </div>
+                            <div class="input-group mb-3">
+                                <input type="text" id="workflow-domain" class="form-control" placeholder="Enter domain">
+                                <button type="submit" class="btn btn-primary">Run Workflow</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
                 <div class="card">
                     <div class="card-body">
                         <h3 class="card-title">Running Commands</h3>
@@ -124,73 +141,67 @@
         const socket = io();
         const commandForm = document.getElementById('command-form');
         const commandInput = document.getElementById('command-input');
+        const workflowForm = document.getElementById('workflow-form');
+        const workflowSelect = document.getElementById('workflow-select');
+        const workflowDomain = document.getElementById('workflow-domain');
         const runningCommands = document.getElementById('running-commands');
         const commandOutput = document.getElementById('command-output');
         const themeToggle = document.getElementById('theme-toggle');
         const errorAlert = document.getElementById('error-alert');
 
-        // Function to fetch and display command output
-        function fetchCommandOutput(commandId) {
-            fetch(`/output/${commandId}`)
-                .then(response => response.json())
-                .then(data => {
-                    const outputElement = document.getElementById(`scroll-${commandId}`);
-                    if (outputElement) {
-                        data.output.forEach(line => {
-                            const newLine = document.createElement('div');
-                            newLine.textContent = line;
-                            outputElement.appendChild(newLine);
-                        });
-                        outputElement.scrollTop = outputElement.scrollHeight;
-                    }
-                })
-                .catch(error => console.error('Error fetching command output:', error));
-        }
+        themeToggle.addEventListener('click', () => {
+            const html = document.documentElement;
+            if (html.getAttribute('data-bs-theme') === 'dark') {
+                html.setAttribute('data-bs-theme', 'light');
+                themeToggle.textContent = 'Dark Mode';
+            } else {
+                html.setAttribute('data-bs-theme', 'dark');
+                themeToggle.textContent = 'Light Mode';
+            }
+        });
 
         commandForm.addEventListener('submit', (e) => {
             e.preventDefault();
             const command = commandInput.value;
             if (command) {
                 const commandId = Date.now().toString();
-                fetch('/run_command', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ id: commandId, command: command }),
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'Command started') {
-                        const commandElement = document.createElement('div');
-                        commandElement.id = `command-${commandId}`;
-                        commandElement.className = 'command-item';
-                        commandElement.innerHTML = `
-                            <p><strong>Running:</strong> ${command} </p>
-                            <strong>Tool: <span class="badge text-bg-primary">${command.split()[0]}</span></strong>
-                            <button class="btn btn-danger btn-sm stop-btn" data-id="${commandId}">Stop</button>
-                        `;
-                        runningCommands.appendChild(commandElement);
-
-                        const outputElement = document.createElement('div');
-                        outputElement.id = `output-${commandId}`;
-                        outputElement.className = 'mb-4';
-                        outputElement.innerHTML = `
-                            <h4>Output for <span class="badge text-bg-primary">${command.split()[0]}</span>: </h4>
-                            <p>${command}</p>
-                            <div class="output-scroll mb-2" id="scroll-${commandId}"></div>
-                            <button class="btn btn-danger btn-sm stop-btn" data-id="${commandId}">Stop</button>
-                            <button class="btn btn-danger btn-sm remove-btn" data-id="${commandId}" style="display:none;">Remove</button>
-                        `;
-                        commandOutput.appendChild(outputElement);
-
-                        // Fetch and display previously saved output
-                        fetchCommandOutput(commandId);
-                        commandInput.value = '';
-                    }
-                })
-                .catch(error => console.error('Error:', error));
+                socket.emit('run_command', { id: commandId, command: command });
+                commandInput.value = '';
             }
+        });
+
+        workflowForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const workflow = workflowSelect.value;
+            const domain = workflowDomain.value;
+            if (workflow && domain) {
+                const commandId = Date.now().toString();
+                socket.emit('run_workflow', { id: commandId, workflow: workflow, domain: domain });
+            }
+        });
+
+        socket.on('command_started', (data) => {
+            const commandElement = document.createElement('div');
+            commandElement.id = `command-${data.id}`;
+            commandElement.className = 'command-item';
+            commandElement.innerHTML = `
+                <p><strong>Running:</strong> ${data.command} </p>
+                <strong>Tool: <span class="badge text-bg-primary">${data.tool}</span></strong>
+                <button class="btn btn-danger btn-sm stop-btn" data-id="${data.id}">Stop</button>
+            `;
+            runningCommands.appendChild(commandElement);
+
+            const outputElement = document.createElement('div');
+            outputElement.id = `output-${data.id}`;
+            outputElement.className = 'mb-4';
+            outputElement.innerHTML = `
+                <h4>Output for <span class="badge text-bg-primary">${data.tool}</span>: </h4>
+                <p>${data.command}</p>
+                <div class="output-scroll mb-2" id="scroll-${data.id}"></div>
+                <button class="btn btn-danger btn-sm stop-btn" data-id="${data.id}">Stop</button>
+                <button class="btn btn-danger btn-sm remove-btn" data-id="${data.id}" style="display:none;">Remove</button>
+            `;
+            commandOutput.appendChild(outputElement);
         });
 
         socket.on('command_output', (data) => {
@@ -243,26 +254,27 @@
         document.addEventListener('click', (e) => {
             if (e.target.classList.contains('stop-btn')) {
                 const commandId = e.target.dataset.id;
-                fetch('/stop_command', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ id: commandId }),
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'Command stopped') {
-                        socket.emit('stop_command', { id: commandId });
-                    }
-                })
-                .catch(error => console.error('Error:', error));
+                socket.emit('stop_command', { id: commandId });
             } else if (e.target.classList.contains('remove-btn')) {
                 const commandId = e.target.dataset.id;
                 document.getElementById(`command-${commandId}`)?.remove();
                 document.getElementById(`output-${commandId}`)?.remove();
             }
         });
+
+        // Fetch workflows and populate select options
+        fetch('/workflows')
+            .then(response => response.json())
+            .then(data => {
+                const select = document.getElementById('workflow-select');
+                for (const [workflowName, workflowDetails] of Object.entries(data)) {
+                    const option = document.createElement('option');
+                    option.value = workflowName;
+                    option.textContent = workflowName;
+                    select.appendChild(option);
+                }
+            })
+            .catch(error => console.error('Error fetching workflows:', error));
     </script>
 </body>
 </html>
