@@ -1,0 +1,13 @@
+workflows:
+  Reconnaissance:
+    steps:
+      - tool: subfinder
+        command: "subfinder -d {domain} -silent | anew subdomains.txt"
+      - tool: amass
+        command: "amass enum -d {domain}"
+  DNS_Enumeration:
+    steps:
+      - tool: dnsenum
+        command: "dnsenum {domain}"
+      - tool: dnsrecon
+        command: "dnsrecon -d {domain} -t std,brt"

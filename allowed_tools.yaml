@@ -1,0 +1,12 @@
+allowed_tools:
+  - nmap
+  - ffuf
+  - feroxbuster
+  - ping
+  - waybackurls
+  - dirb
+  - subfinder
+  - assetfinder
+  - dnsrecon
+  - dnsenum
+  - amass
