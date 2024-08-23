@@ -1,10 +1,26 @@
 workflows:
-  Reconnaissance:
+  GET_SUBDOMAINS:
     steps:
       - tool: subfinder
         command: "subfinder -d {domain} -silent | anew subdomains.txt"
       - tool: amass
         command: "amass enum -d {domain}"
+  RESOLVE_IP:
+    steps:
+      - tool: dnsx
+        command: "cat subdomains.txt | dnsx -a -resp-only -o ip_address.txt"
+  PORT_SCAN:
+    steps:
+      - tool: nmap
+        command: "nmap -iL -p- -sV -sC -oN nmap_scaon.txt"
+  GITHUB_CHECK:
+    steps:
+      - tool: curl
+        command: "for subdomain in $(cat subdomains.txt); do curl -s \"https://$subdomain/.git/HEAD\" | grep -q \"ref:\" && echo \"https://$subdomain/.git\" >> exposed_git.txt; done"
+  WEB_PROBE:
+    steps:
+      - tool: httpx
+        command: "httpx -l subdomains.txt -sc -cl -title -server -ip -cname -web-server -td -cdn -tls-probe -json -o output.json"
   DNS_Enumeration:
     steps:
       - tool: dnsenum
