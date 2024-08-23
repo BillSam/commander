@@ -10,4 +10,4 @@ allowed_tools:
   - dnsrecon
   - dnsenum
   - amass
-  - curl
+  - github

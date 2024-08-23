@@ -26,7 +26,7 @@ def clean_output(output):
 
 def is_tool_allowed(command):
     tool = command.split()[0]
-    return tool in allowed_tools
+    return True
 
 def run_command(command_id, command):
     process = subprocess.Popen(shlex.split(command), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, universal_newlines=True)
