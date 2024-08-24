@@ -2,25 +2,51 @@ workflows:
   GET_SUBDOMAINS:
     steps:
       - tool: subfinder
-        command: "subfinder -d {domain} -silent -o subs.txt"
+        command: "subfinder -d {domain} -silent -o {domain}-subs.txt"
       - tool: amass
         command: "amass enum -d {domain}"
+      - tool: nmap
+        command: "nmap -T4 -p 53 --script dns-brute {domain}"
+      - tool: assetfinder
+        command: "assetfinder --subs-only {domain} | anew {domain}-subs.txt"
+      - tool: crt
+        command: "curl -s https://crt.sh/\\?q\\={domain}\\&output\\=json | jq -r '.[].name_value' | grep -Po '(\\w+\\.\\w+\\.\\w+)$'"
   RESOLVE_IP:
     steps:
       - tool: dnsx
-        command: "cat output/subfinder_output.txt | dnsx -a -resp-only"
+        command: "cat {domain}-subs.txt | dnsx -a -resp-only -o {domain}-ips.txt"
   PORT_SCAN:
     steps:
       - tool: nmap
-        command: "nmap -iL {domain}-ip_address.txt  -p- -sV -sC -oN nmap_scaon.txt"
+        command: "nmap -iL {domain}-ips.txt  -p- -sV -sC -oN {domain}-nmap_scan.txt"
+      - tool: naabu
+        command: "naabu -list {domain}-subs.txt -p - -c 100 | httpx | anew {domain}-naabu_scan.txt"
   GITHUB_CHECK:
     steps:
-      - tool: github
-        command: "for subdomain in $(cat /home/skanice/K-command/output/basic_recon/tesla.com/subfinder_output.txt); do curl -s \"https://$subdomain/.git/HEAD\" | grep -q \"ref:\" && echo \"https://$subdomain/.git\" >> exposed_git.txt; done"
+      - tool: ffuf
+        command: "echo \"[+] Discovering API endpoints...\" && for subdomain in $(cat {domain}-subs.txt); do ffuf -w wordlist.txt -u \"https://$subdomain/FUZZ\" -mc 200,201,204,301,302,307,401,403 -o {domain}-ffuf.json; done"
+  SUB_TAKEOVER:
+    steps:
+      - tool: subjack
+        command: "subjack -w {domain}-subs.txt -t 100 -timeout 30 -ssl -c /home/skanice/go/pkg/mod/github.com/haccer/subjack@v0.0.0-20201112041112-49c51e57deab/fingerprints.json -v 3t"
   WEB_PROBE:
     steps:
       - tool: httpx
-        command: "httpx -l  subs.txt"
+        command: "httpx -l  {domain}-subs.txt -o {domain}-live-subs.txt"
+  GET_URLS:
+    steps:
+      - tool: gau
+        command: "cat {domain}-live-subs.txt | gau | anew {domain}-urls.txt"
+      - tool: katana
+        command: "katana -list -v -jc -d 5  {domain}-katana.txt"
+  CRLF_INJECTION:
+    steps:
+      - tool: crlfuzz
+        command: "crlfuzz -l {domain}-live-subs.txt -o {domain}-crlfuzz.txt"
+  XML_INJECTION:
+    steps:
+      - tool: xmlrpcscan
+        command: "cat {domain}-live-subs.txt | xmlrpcscan -server \"ji5v4871odibu4p19c6b5sd7iyopch06.oastify.com\" -o {domain}-xmlrpcscan.txt"
   DNS_Enumeration:
     steps:
       - tool: dnsenum
@@ -30,4 +56,16 @@ workflows:
   CORS_SCAN:
     steps:
       - tool: cors
-        command: "corscanner -i subs.txt"
+        command: "corscanner -i  {domain}-live-subs.txt "
+  WEB_SHOT:
+    steps:
+      - tool: aquatone
+        command: "cat  {domain}-live-subs.txt  {domain}-naabu_scan.txt | aquatone | python3 -m http.server"
+  PARAM_SCAN:
+    steps:
+      - tool: cors
+        command: "paramspider -l  {domain}-live-subs.txt >> {domain}-params.txt"
+  CACHE_BLAST:
+    steps:
+      - tool: cacheblaster
+        command: "python3 /home/skanice/cacheblaster/cacheblaster.py -u {domain}"

@@ -11,3 +11,4 @@ allowed_tools:
   - dnsenum
   - amass
   - github
+  - subjack
